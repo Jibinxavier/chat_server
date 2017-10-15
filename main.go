@@ -3,7 +3,7 @@ package main
 import (
     "net"
     "fmt"
-   // "strings"
+    "strings"
     "os"
 )
 var serverIP    string
@@ -33,7 +33,18 @@ type ChatRoom struct {
 	name 		string
 	users		map[string][]Client // key would be the name of the client
 }
- 
+
+func parseMesg(mesg string) string{
+    var data = strings.Split(mesg, "\n")
+    var resp = ""
+    if strings.Contains(data[0], "HELO") {
+        resp = resp + fmt.Sprintf("IP:%s\nPort:%s\nStudentID:13321596\n", serverIP, serverPort)
+    }
+    
+    return resp
+
+}
+
 func (client *Client) Read() {
     var buf = make([]byte, 1024)
     
@@ -45,13 +56,22 @@ func (client *Client) Read() {
         }
         checkError(err)
         // output message received
-        fmt.Print("Message Received:", string(buf)) 
+        response := parseMesg(string(buf))
+ 
+        select {
+        case  client.outgoing <- string(response):
+            fmt.Println("sent message")
+        default:
+            fmt.Println("no message sent")
+        }
+       
     }
-    client.incoming <- string(buf)
+   
 	 
 }
 
 func (client *Client) Write() {
+    fmt.Print("writing to channel") 
 	for data := range client.outgoing {
 		client.conn.Write([]byte(data + "\n"))
 	}
@@ -77,15 +97,7 @@ func NewClient(connection net.Conn) *Client {
 	return client
 }
 
-// func parseMesg(mesg string){
-//     var data = strings.Split(mesg, "\n")
-//     var resp string
-//     if strings.Contains(data[0], "HELO") {
-//         resp := resp + fmt.Sprintf("IP:%s\nPort:%s\nStudentID:13321596\n", serverIP, serverPort)
-//     }
-//     fmt.Println("Launching server..." + resp)
 
-// }
 func clientHandle(conn net.Conn){
     
 
@@ -93,8 +105,8 @@ func clientHandle(conn net.Conn){
  
 
 func main() {
-    serverIP   := "127.0.0.1"
-    serverPort := "8080" 
+    serverIP   = "127.0.0.1"
+    serverPort = "8080" 
     fmt.Println("Launching server...")
 
     // listen on all interfaces
