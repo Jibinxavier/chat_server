@@ -5,6 +5,7 @@ import (
     "fmt"
     "strings"
     "os"
+    "sync"
 )
 var serverIP    string
 var serverPort  string
@@ -12,13 +13,18 @@ var serverPort  string
 func chatMessage(rRef, name, mesg string) (string) {
 	return fmt.Sprintf("CHAT: {}\nCLIENT_NAME: {}\nMESSAGE: {}\n\n")
 }
+type Session struct {
+    mu          sync.Mutex
+    chatRooms   map[string]*ChatRoom // key name of chat room
+}
 type Client struct {
 	conn		net.Conn
 	addr		string
 	uid			string
     name		string
     incoming    chan string
-	outgoing    chan string
+    outgoing    chan string
+    sess        *Session
 
 }
 type Mesg struct {
@@ -31,17 +37,95 @@ type Mesg struct {
 type ChatRoom struct {
 	id			string
 	name 		string
-	users		map[string][]Client // key would be the name of the client
+    clients		map[string]*Client // key would be the name of the client
+    incoming    chan string
+	outgoing    chan string
+}
+func NewChatRoom(id string, name string ) *ChatRoom {  
+	chatroom := &ChatRoom{ 
+		id:			id,
+        name: 		name,
+        clients:	make(map[string]*Client) , 
+        incoming:   make(chan string),
+		outgoing:   make(chan string),
+	} 
+	return chatroom
+}
+ 
+ // create a thread for each chatroom
+//
+func (chatRoom *ChatRoom) Broadcast(data string) {
+	for _, client := range chatRoom.clients {
+		client.outgoing <- data
+	}
 }
 
-func parseMesg(mesg string) string{
-    var data = strings.Split(mesg, "\n")
-    var resp = ""
-    if strings.Contains(data[0], "HELO") {
-        resp = resp + fmt.Sprintf("IP:%s\nPort:%s\nStudentID:13321596\n", serverIP, serverPort)
-    }
+func (client *Client) joinChatroom(roomName string, userName string )  {
+    // add user
+     
+    client.sess.mu.Lock()
+    defer client.sess.mu.Unlock()
+
+    var clientMesg      string
+    var broadcastMesg   string
     
-    return resp
+    _ , ok := client.sess.chatRooms[roomName]
+    // create the chat room if it is new
+    if  ok != true {
+        newId := string(len(client.sess.chatRooms))
+        newChatRoom := NewChatRoom(newId, roomName )
+        client.sess.chatRooms[roomName] = newChatRoom // add values to map
+        
+    }  
+    chatroom := client.sess.chatRooms[roomName]
+    // add clients if new to the chat room
+    _, ok = chatroom.clients[userName]; 
+    if ok {
+        clientMesg = " you already are in the chat room " 
+
+    }else { 
+        
+        chatroom.clients[userName] = client // add client to the chatroom
+        clientMesg = fmt.Sprintf("JOINED_CHATROOM: %s\nSERVER_IP: %s\nPORT: %s\nROOM_REF: %s\nJOIN_ID: %s",chatroom.name,
+                                                                                                    serverIP,
+                                                                                                    serverPort,
+                                                                                                    chatroom.id,
+                                                                                                  client.uid ) 
+        broadcastMesg = fmt.Sprintf("client%s has joined this chatroom.",client.name)
+    }
+    client.outgoing <- clientMesg   // send client notification
+    chatroom.Broadcast(broadcastMesg) // notification to the whole chat room
+}
+
+func (client *Client) updateClient(name string){
+    /*
+        When the client is created, it does not have
+        the name. However certain commands such as
+        JOIN_CHATROOM have the clients name
+    */ 
+    if client.name == "defaultname" {
+        client.name = name
+    }
+}
+
+
+func (client *Client) parseMesg(mesg string ){
+    var data [] string= strings.Split(mesg, "\n")
+     
+    var clientName string 
+    var roomName string
+
+    if strings.Contains(data[0], "HELO") {
+        client.outgoing <- fmt.Sprintf("IP:%s\nPort:%s\nStudentID:13321596\n", serverIP, serverPort)
+        
+    } else if strings.Contains(data[0], "JOIN_CHATROOM") { 
+        
+        roomName = strings.Split(data[0], ":")[1] // as per protocol structure 
+        clientName = strings.Split(data[3], ":")[1]
+
+        client.updateClient(clientName)
+        client.joinChatroom(roomName, clientName)
+    } 
 
 }
 
@@ -56,14 +140,7 @@ func (client *Client) Read() {
         }
         checkError(err)
         // output message received
-        response := parseMesg(string(buf))
- 
-        select {
-        case  client.outgoing <- string(response):
-            fmt.Println("sent message")
-        default:
-            fmt.Println("no message sent")
-        }
+        client.parseMesg(string(buf))
        
     }
    
@@ -82,14 +159,15 @@ func (client *Client) Listen() {
 	go client.Write()
 }
 
-func NewClient(connection net.Conn) *Client {  
+func NewClient(connection net.Conn,uid int, sess *Session) *Client {  
 	client := &Client{ 
 		conn:       connection,
         addr:		"testAddr",
-        uid:		"testAddr",
-        name:		"testname",
+        uid:		string(uid),
+        name:		"defaultname",
         incoming:   make(chan string),
-		outgoing:   make(chan string),
+        outgoing:   make(chan string),
+        sess:       sess,
 	}
 
 	client.Listen()
@@ -97,11 +175,6 @@ func NewClient(connection net.Conn) *Client {
 	return client
 }
 
-
-func clientHandle(conn net.Conn){
-    
-
-}
  
 
 func main() {
@@ -111,18 +184,17 @@ func main() {
 
     // listen on all interfaces
      
-    
+    currSession := &Session{chatRooms: make(map[string]*ChatRoom)}
      
     ln, _ := net.Listen("tcp", serverIP + ":" + serverPort)
     
-    // accept connection on port
-    
-    //var client = Client {conn,"testaddr","testuid","testname"}
-    
+    // accept connection on port 
+    clientCount := 0
 
     for {
-		conn, _ := ln.Accept()
-		NewClient(conn)
+        conn, _ := ln.Accept() // waits for new connection
+        NewClient(conn,clientCount,currSession)
+        clientCount +=1
 	}
   
 
