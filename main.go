@@ -74,6 +74,21 @@ func (sess *Session) getChatroom( roomName string) (*ChatRoom,bool){
     }
     return nil, false
 }
+func (client *Client) chat(mesg string, clientName string, roomRef string, joinId string){
+    client.sess.mu.Lock()
+    defer client.sess.mu.Unlock()
+
+    
+    if client.name == clientName {
+        chatroom := client.sess.chatRooms[roomRef]
+        broadcastMesg :=chatMessage(roomRef,client.name,mesg)
+        chatroom.Broadcast(broadcastMesg)
+        //close channels 
+    } else {
+        client.outgoing <- errorMessage( 24, "User name not found")
+    }
+
+}
 
 func (client *Client) joinChatroom(roomName string, userName string )  { 
     client.sess.mu.Lock()
@@ -143,7 +158,7 @@ func (client *Client) leaveChatroom(roomRef string, joinId string, userName stri
         // can not find user name
         clientMesg = errorMessage( 24, "User name not found")
          
-        broadcastMesg = chatMessage(roomRef,client.name,"client%s has left this chatroom.")
+        broadcastMesg = chatMessage(roomRef,client.name,fmt.Sprint("client%s has left this chatroom.",client.name))
     }
     client.outgoing <- clientMesg   // send client notification
     chatroom.Broadcast(broadcastMesg) // notification to the whole chat room
@@ -181,7 +196,7 @@ func (client *Client) parseMesg(mesg string ){
         client.joinChatroom(roomName, clientName)
 
     } else if strings.Contains(data[0], "LEAVE_CHATROOM"){
-        roomRef     = strings.Split(data[0], ":")[1] // as per protocol structure 
+        roomRef     = strings.Split(data[0], ":")[1]  
         joinId      = strings.Split(data[1], ":")[1]
         clientName  = strings.Split(data[2], ":")[1]
 
@@ -190,7 +205,16 @@ func (client *Client) parseMesg(mesg string ){
         clientName  = strings.Split(data[2], ":")[1]
 
         client.disconnect(clientName)
-    }   
+    } else if strings.Contains(data[0], "CHAT"){
+        roomRef     = strings.Split(data[0], ":")[1] 
+        joinId      = strings.Split(data[1], ":")[1]
+        clientName  = strings.Split(data[2], ":")[1]
+        mesg        = strings.Split(data[3], ":")[1]
+
+        client.chat(mesg, clientName,roomRef,joinId)
+    }else if  strings.Contains(data[0], "KILL_SERVICE"){
+        os.Exit(1)
+    }
 
 }
 
