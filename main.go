@@ -226,6 +226,7 @@ func (client *Client) Read() {
 
         if mesgLen ==0 {
             fmt.Printf("Connection closed by remote host\n")
+            break
         }
         checkError(err)
         // output message received
@@ -267,8 +268,14 @@ func NewClient(connection net.Conn,uid int, sess *Session) *Client {
  
 
 func main() {
-    serverIP   = "127.0.0.1"
-    serverPort = "8080" 
+
+    if (len(os.Args) !=3) {
+        fmt.Println("ip port")
+        os.Exit(1)
+    }
+    parms := os.Args[1:]
+    serverIP   = parms[0]
+    serverPort = parms[1] 
     fmt.Println("Launching server...")
 
     // listen on all interfaces
@@ -292,7 +299,7 @@ func checkError(err error) {
 
 
     if err != nil {
-        fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
-        os.Exit(1)
+        //fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
+        //os.Exit(1)
     }
 }
