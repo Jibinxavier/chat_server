@@ -1,0 +1,10 @@
+get simple communication between the client and server DONE
+get a client to join a chat room (create a dictionary with ref as key and clients as list values)
+test out the joining methods
+
+
+/// notes 
+need to fix the synchronisation between incomming and outgoing channels
+
+need incrementor for client number
+     incrementor for chatroom
