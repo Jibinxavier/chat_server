@@ -54,7 +54,8 @@ func NewChatRoom(id string, name string ) *ChatRoom {
         clients:	make(map[string]*Client) , 
         incoming:   make(chan string),
 		outgoing:   make(chan string),
-	} 
+    } 
+    
 	return chatroom
 }
  
@@ -74,6 +75,15 @@ func (sess *Session) getChatroom( roomName string) (*ChatRoom,bool){
     }
     return nil, false
 }
+func (sess *Session) getChatrooWRef( ref string) (*ChatRoom,bool){
+    
+        for _, room := range sess.chatRooms {
+            if  room.id == ref {
+                 return room, true
+            } 
+        }
+        return nil, false
+    }
 func (client *Client) chat(mesg string, clientName string, roomRef string, joinId string){
     client.sess.mu.Lock()
     defer client.sess.mu.Unlock()
@@ -102,7 +112,9 @@ func (client *Client) joinChatroom(roomName string, userName string )  {
     chatroom, ok :=  client.sess.getChatroom( roomName)
     // create the chat room if it is new
     if  ok == false {
-        roomRef := string(len(client.sess.chatRooms))
+        //fmt.Printf("New chatroom \n")
+        roomRef := fmt.Sprint(len(client.sess.chatRooms))  
+        fmt.Printf("New chatroom %d\n",len(client.sess.chatRooms))
         newChatRoom := NewChatRoom(roomRef, roomName )
         client.sess.chatRooms[roomRef] = newChatRoom // add values to map 
         chatroom = newChatRoom
@@ -114,12 +126,12 @@ func (client *Client) joinChatroom(roomName string, userName string )  {
 
     }else {  
         chatroom.clients[userName] = client // add client to the chatroom
-        clientMesg = fmt.Sprintf("JOINED_CHATROOM: %s\nSERVER_IP: %s\nPORT: %s\nROOM_REF: %s\nJOIN_ID: %s",chatroom.name,
+        clientMesg = fmt.Sprintf("JOINED_CHATROOM: %s\nSERVER_IP: %s\nPORT:%s\nROOM_REF:%s\nJOIN_ID: %s",chatroom.name,
                                                                                                     serverIP,
                                                                                                     serverPort,
                                                                                                     chatroom.id,
                                                                                                   client.uid ) 
-        broadcastMesg = chatMessage(roomRef,client.name,fmt.Sprintf("client%s has joined this chatroom.",userName))
+        broadcastMesg = chatMessage(roomRef,client.name,fmt.Sprintf("client %s has joined this chatroom.",userName))
     }
     client.outgoing <- clientMesg   // send client notification
     chatroom.Broadcast(broadcastMesg) // notification to the whole chat room
@@ -141,27 +153,33 @@ func (client *Client) leaveChatroom(roomRef string, joinId string, userName stri
     var clientMesg      string
     var broadcastMesg   string 
     // joinid and uid are the same
-    
-    chatroom, ok :=  client.sess.chatRooms[roomRef]
+    chatroom, ok :=  client.sess.getChatrooWRef(roomRef)
+    //chatroom, ok :=  client.sess.chatRooms[roomRef]
     // can not find chat
     if ok == false {
+        fmt.Printf(" Chat room not found%s",roomRef)
         clientMesg = errorMessage(1, "Unknown chat room")
-    }  
-    
-     
-    _, ok = chatroom.clients[userName]; 
-    if ok {
-        delete(chatroom.clients, userName) 
-        clientMesg = fmt.Sprintf("LEFT_CHATROOM: %s\nJOIN_ID: %s",chatroom.name, joinId) 
-
-    }else {  
-        // can not find user name
-        clientMesg = errorMessage( 24, "User name not found")
          
-        broadcastMesg = chatMessage(roomRef,client.name,fmt.Sprint("client%s has left this chatroom.",client.name))
+    }else {
+        _, ok = chatroom.clients[userName]; 
+        if ok {
+            delete(chatroom.clients, userName) 
+
+
+            clientMesg = fmt.Sprintf("LEFT_CHATROOM: %s\nJOIN_ID: %s",chatroom.name, joinId) 
+
+            fmt.Printf(clientMesg)
+            broadcastMesg = chatMessage(roomRef,client.name,fmt.Sprint("client %s has left this chatroom.",client.name))
+            _ = broadcastMesg
+            chatroom.Broadcast(broadcastMesg) // notification to the whole chat room
+        }else {  
+            clientMesg = errorMessage( 24, "User name not found") 
+            // can not find user name
+        } 
     }
+    
     client.outgoing <- clientMesg   // send client notification
-    chatroom.Broadcast(broadcastMesg) // notification to the whole chat room
+    
 }
 
 func (client *Client) updateClient(name string){
@@ -189,27 +207,27 @@ func (client *Client) parseMesg(mesg string ){
         
     } else if strings.Contains(data[0], "JOIN_CHATROOM") { 
         
-        roomName    = strings.Split(data[0], ":")[1] // as per protocol structure 
-        clientName  = strings.Split(data[3], ":")[1]
+        roomName    = strings.Trim(strings.Split(data[0], ":")[1], " ") // as per protocol structure 
+        clientName  = strings.Trim(strings.Split(data[3], ":")[1], " ")
 
         client.updateClient(clientName)
         client.joinChatroom(roomName, clientName)
 
     } else if strings.Contains(data[0], "LEAVE_CHATROOM"){
-        roomRef     = strings.Split(data[0], ":")[1]  
-        joinId      = strings.Split(data[1], ":")[1]
-        clientName  = strings.Split(data[2], ":")[1]
+        roomRef     = strings.Trim(strings.Split(data[0], ":")[1], " ")
+        joinId      = strings.Trim(strings.Split(data[1], ":")[1], " ")
+        clientName  = strings.Trim(strings.Split(data[2], ":")[1], " ")
 
         client.leaveChatroom(roomRef , joinId, clientName) 
     } else if strings.Contains(data[0], "DISCONNECT") {
-        clientName  = strings.Split(data[2], ":")[1]
+        clientName  = strings.Trim(strings.Split(data[2], ":")[1], " ")
 
         client.disconnect(clientName)
     } else if strings.Contains(data[0], "CHAT"){
-        roomRef     = strings.Split(data[0], ":")[1] 
-        joinId      = strings.Split(data[1], ":")[1]
-        clientName  = strings.Split(data[2], ":")[1]
-        mesg        = strings.Split(data[3], ":")[1]
+        roomRef     = strings.Trim(strings.Split(data[0], ":")[1], " ")
+        joinId      = strings.Trim(strings.Split(data[1], ":")[1], " ")
+        clientName  = strings.Trim(strings.Split(data[2], ":")[1], " ")
+        mesg        = strings.Trim(strings.Split(data[3], ":")[1], " ")
 
         client.chat(mesg, clientName,roomRef,joinId)
     }else if  strings.Contains(data[0], "KILL_SERVICE"){
@@ -253,7 +271,7 @@ func NewClient(connection net.Conn,uid int, sess *Session) *Client {
 	client := &Client{ 
 		conn:       connection,
         addr:		"testAddr",
-        uid:		string(uid),
+        uid:		fmt.Sprint(uid),
         name:		"defaultname",
         incoming:   make(chan string),
         outgoing:   make(chan string),

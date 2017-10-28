@@ -14,11 +14,17 @@ func main() {
     fmt.Print("Text to send: ")
     text, _ := reader.ReadString('\n')
      _ = text
+
+    var c =0
     for {
         var buf = make([]byte,1024)
-        
+        c +=1
+         
         // send to socket
-        fmt.Fprintf(conn,"JOIN_CHATROOM: chat1\nCLIENT_IP: 0\nPORT: 0\nCLIENT_NAME: client2\n")
+        fmt.Fprintf(conn,"JOIN_CHATROOM: chat3\nCLIENT_IP: 0\nPORT: 0\nCLIENT_NAME: client2\n")
+
+
+        //fmt.Fprintf(conn,"LEAVE_CHATROOM: chat3\nJOIN_ID: 0\nCLIENT_NAME: client2\n")
         // listen for reply
         conn.Read(buf)
     

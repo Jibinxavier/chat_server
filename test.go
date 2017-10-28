@@ -1,28 +1,36 @@
 package main
-import ( 
-    "fmt" 
-)
-type Item struct {
-    Id          string
-    Name        string
-    Price       string
-}
 
-type Cart1 struct {
-    Id          string
-    Items       []Item
-}
-type Cart2 struct {
-    Id          string
-    Items       []*Item
-}
+import "net"
+import "fmt"
+import "bufio"
+import "os" 
 func main() {
-    foo := cart1.Items[0]
-	foo.Name := "foo" //will not change cart1
-	//but in pointer case
-	bar := cart2.Items[0]
-	bar.Name := "bar" //will change cart2.Items[0].Name to "bar"
-	fm
-  
 
+  // connect to this socket
+  conn, _ := net.Dial("tcp", "127.0.0.1:8080")
+  for { 
+    // read in input from stdin
+    reader := bufio.NewReader(os.Stdin)
+    fmt.Print("Text to send: ")
+    text, _ := reader.ReadString('\n')
+     _ = text
+
+    var c =0
+    for {
+        var buf = make([]byte,1024)
+        c +=1
+         
+        // send to socket
+        //fmt.Fprintf(conn,"JOIN_CHATROOM: chat3\nCLIENT_IP: 0\nPORT: 0\nCLIENT_NAME: client2\n")
+
+
+        fmt.Fprintf(conn,"LEAVE_CHATROOM: 0\nJOIN_ID: 0\nCLIENT_NAME: client2\n")
+        // listen for reply
+        conn.Read(buf)
+    
+        fmt.Print("Message from server: "+string(buf))
+        break
+    }
+    
+  }
 }
