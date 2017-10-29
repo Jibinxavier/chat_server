@@ -148,8 +148,7 @@ func (client *Client) killService(){
         for _, c := range room.clients{
              _, found := closedClients[c.uid]
              if found ==false {
-                closedClients[c.uid] = true
-                close(c.incoming)
+                closedClients[c.uid] = true 
                 close(c.outgoing)
                 c.conn.Close()
              }
@@ -157,7 +156,7 @@ func (client *Client) killService(){
         
          
     }
-    
+    client.conn.Close()
 
 }
  
@@ -177,9 +176,9 @@ func (client *Client) disconnect(clientName string){
                 delete(room.clients, clientName) 
             }
              
-        }
-        close(client.incoming)
-        close(client.outgoing)
+        } 
+        //close(client.outgoing)
+        client.outgoing <- "DISCONNECT"
         //client.conn.Close()
     } else {
         client.outgoing <- errorMessage( 24, "User name not found")
@@ -276,7 +275,7 @@ func (client *Client) parseMesg(mesg string ){
         client.chat(mesg, clientName,roomRef,joinId)
     }else if  strings.Contains(data[0], "KILL_SERVICE"){
         client.killService()
-        os.Exit(1)
+        os.Exit(0)
     } else {
         client.outgoing <- errorMessage(25 ,"unknown request")
     }
@@ -303,20 +302,28 @@ func (client *Client) Read() {
 }
 
 
-func (client *Client) Write() {
-   // fmt.Print("writing to channel") 
-	for data := range client.outgoing {
-        fmt.Printf(" Message to client ", data)
-		client.conn.Write([]byte(data ))
-	}
-}
 
+func (client *Client) Write() {
+    // fmt.Print("writing to channel") 
+     for data := range client.outgoing {
+         if strings.Contains(data, "DISCONNECT"){
+             fmt.Printf(" CLient disconnecting %s",client.uid)
+             client.conn.Close()
+             return
+         } else{
+             fmt.Printf(" Message to client ", data)
+             client.conn.Write([]byte(data ))
+         }
+         
+     }
+ }
 func (client *Client) Listen() {
 	go client.Read()
 	go client.Write()
 }
 
 func NewClient(connection net.Conn,uid int, sess *Session) *Client {  
+    fmt.Printf("NEW CONNNECTION")
 	client := &Client{ 
 		conn:       connection,
         addr:		"testAddr",
@@ -341,8 +348,8 @@ func main() {
         os.Exit(1)
     }
     parms := os.Args[1:]
-    serverIP   = parms[0]
-    serverPort = parms[1] 
+    serverIP   = "0.0.0.0"
+    serverPort = os.Getenv("port")
     fmt.Println("Launching server...")
 
     // listen on all interfaces
@@ -356,6 +363,7 @@ func main() {
 
     for {
         conn, _ := ln.Accept() // waits for new connection
+        
         NewClient(conn,clientCount,currSession)
         clientCount +=1
 	}
