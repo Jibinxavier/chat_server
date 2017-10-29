@@ -136,17 +136,40 @@ func (client *Client) joinChatroom(roomName string, userName string )  {
     client.outgoing <- clientMesg   // send client notification
     chatroom.Broadcast(broadcastMesg) // notification to the whole chat room
 }
- 
-func (client *Client) disconnect(clientName string){
+
+func (client *Client) killService(){
     client.sess.mu.Lock()
     defer client.sess.mu.Unlock()
+    // can have a dictionary to keep track of clients
 
+    var closedClients = make(map[string]bool)
+     
+    for _, room := range client.sess.chatRooms {
+        for _, c := range room.clients{
+             _, found := closedClients[c.uid]
+             if found ==false {
+                closedClients[c.uid] = true
+                close(c.incoming)
+                close(c.outgoing)
+                c.conn.Close()
+             }
+        }
+        
+         
+    }
+    
+
+}
+ 
+func (client *Client) disconnect(clientName string) bool{
+    client.sess.mu.Lock()
+    defer client.sess.mu.Unlock()
 
     
     
     if client.name == clientName {
         
-        // remove t
+         
         for _, room := range client.sess.chatRooms {
             _, ok := room.clients[clientName] 
             if ok {  
@@ -155,11 +178,13 @@ func (client *Client) disconnect(clientName string){
             }
              
         }
-        close(client.incoming)
-        close(client.outgoing)
+        client.outgoing <- "DISCONNECT"
+        //close(client.outgoing)
         //client.conn.Close()
+        return false
     } else {
         client.outgoing <- errorMessage( 24, "User name not found")
+        return true
     }
 }
 func (client *Client) leaveChatroom(roomRef string, joinId string, userName string)  {
@@ -213,7 +238,7 @@ func (client *Client) updateClient(name string){
 }
 
 
-func (client *Client) parseMesg(mesg string ){
+func (client *Client) parseMesg(mesg string ) bool{
     var data [] string= strings.Split(mesg, "\n")
      
     var clientName  string 
@@ -225,7 +250,7 @@ func (client *Client) parseMesg(mesg string ){
     if strings.Contains(data[0], "HELO") {
         var text = strings.Split(data[0], " ")[1]
         client.outgoing <- fmt.Sprintf("HELO %s\nIP:%s\nPort:%s\nStudentID:13321596",text, serverIP, serverPort)
-        
+        return true // to indicate everything is ok
     } else if strings.Contains(data[0], "JOIN_CHATROOM") { 
         
         roomName    = strings.Trim(strings.Split(data[0], ":")[1], " ") // as per protocol structure 
@@ -233,17 +258,18 @@ func (client *Client) parseMesg(mesg string ){
 
         client.updateClient(clientName)
         client.joinChatroom(roomName, clientName)
-
+        return true // to indicate everything is ok
     } else if strings.Contains(data[0], "LEAVE_CHATROOM"){
         roomRef     = strings.Trim(strings.Split(data[0], ":")[1], " ")
         joinId      = strings.Trim(strings.Split(data[1], ":")[1], " ")
         clientName  = strings.Trim(strings.Split(data[2], ":")[1], " ")
 
         client.leaveChatroom(roomRef , joinId, clientName) 
+        return true // to indicate everything is ok
     } else if strings.Contains(data[0], "DISCONNECT") {
         clientName  = strings.Trim(strings.Split(data[2], ":")[1], " ")
 
-        client.disconnect(clientName)
+        return client.disconnect(clientName)
     } else if strings.Contains(data[0], "CHAT"){
         roomRef     = strings.Trim(strings.Split(data[0], ":")[1], " ")
         joinId      = strings.Trim(strings.Split(data[1], ":")[1], " ")
@@ -251,10 +277,14 @@ func (client *Client) parseMesg(mesg string ){
         mesg        = strings.Trim(strings.Split(data[3], ":")[1], " ")
 
         client.chat(mesg, clientName,roomRef,joinId)
+        return true
     }else if  strings.Contains(data[0], "KILL_SERVICE"){
+        client.killService()
         os.Exit(1)
+        return true
     } else {
         client.outgoing <- errorMessage(25 ,"unknown request")
+        return true // to indicate everything is ok
     }
 
 }
@@ -271,8 +301,11 @@ func (client *Client) Read() {
         }
         checkError(err)
         // output message received
-        client.parseMesg(string(buf))
-       
+        var result =  client.parseMesg(string(buf))
+        if result == false {
+            client.conn.Close()
+            break
+        }
     }
    
 	 
@@ -282,8 +315,15 @@ func (client *Client) Read() {
 func (client *Client) Write() {
    // fmt.Print("writing to channel") 
 	for data := range client.outgoing {
-        fmt.Printf(" Message to client ", data)
-		client.conn.Write([]byte(data ))
+        if strings.Contains(data, "DISCONNECT"){
+            fmt.Printf(" CLient disconnecting")
+            client.conn.Close()
+            break
+        } else{
+            fmt.Printf(" Message to client ", data)
+            client.conn.Write([]byte(data ))
+        }
+        
 	}
 }
 
