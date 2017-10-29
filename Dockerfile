@@ -1,4 +1,3 @@
-FROM golang
-ADD . ./main
-
-ENTRYPOINT ./main
+FROM scratch
+COPY chatserver_docker /
+CMD ["/chatserver_docker"]

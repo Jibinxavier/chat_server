@@ -346,8 +346,7 @@ func main() {
     if (len(os.Args) !=3) {
         fmt.Println("ip port")
         os.Exit(1)
-    }
-    parms := os.Args[1:]
+    } 
     serverIP   = "0.0.0.0"
     serverPort = os.Getenv("port")
     fmt.Println("Launching server...")
