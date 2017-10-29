@@ -348,8 +348,8 @@ func main() {
         os.Exit(1)
     }
     parms := os.Args[1:]
-    serverIP   = parms[0]
-    serverPort = parms[1] 
+    serverIP   = "0.0.0.0"
+    serverPort = os.Getenv("port")
     fmt.Println("Launching server...")
 
     // listen on all interfaces
