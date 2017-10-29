@@ -11,13 +11,13 @@ var serverIP    string
 var serverPort  string
 
 func chatMessage(roomRef, clientName, mesg string) (string) {
-    return fmt.Sprintf("CHAT: %s\nCLIENT_NAME: %s\nMESSAGE: %s\n\n",
+    return fmt.Sprintf("CHAT:%s\nCLIENT_NAME:%s\nMESSAGE:%s\n\n",
                                                             roomRef,
                                                             clientName, 
                                                             mesg)
 }
 func errorMessage(errorNum int, mesg string) string {
-    return fmt.Sprintf("ERROR_CODE:%d\nERROR_DESCRIPTION: %s\n",errorNum, mesg)
+    return fmt.Sprintf("ERROR_CODE:%d\nERROR_DESCRIPTION:%s\n",errorNum, mesg)
 }
 type Session struct {
     mu          sync.Mutex
@@ -113,8 +113,8 @@ func (client *Client) joinChatroom(roomName string, userName string )  {
     // create the chat room if it is new
     if  ok == false {
         //fmt.Printf("New chatroom \n")
-        roomRef := fmt.Sprint(len(client.sess.chatRooms))  
-        fmt.Printf("New chatroom %d\n",len(client.sess.chatRooms))
+        roomRef = fmt.Sprint(len(client.sess.chatRooms))  
+        //fmt.Printf("New chatroom %d\n",len(client.sess.chatRooms))
         newChatRoom := NewChatRoom(roomRef, roomName )
         client.sess.chatRooms[roomRef] = newChatRoom // add values to map 
         chatroom = newChatRoom
@@ -126,21 +126,40 @@ func (client *Client) joinChatroom(roomName string, userName string )  {
 
     }else {  
         chatroom.clients[userName] = client // add client to the chatroom
-        clientMesg = fmt.Sprintf("JOINED_CHATROOM: %s\nSERVER_IP: %s\nPORT:%s\nROOM_REF:%s\nJOIN_ID: %s",chatroom.name,
+        clientMesg = fmt.Sprintf("JOINED_CHATROOM: %s\nSERVER_IP: %s\nPORT: %s\nROOM_REF: %s\nJOIN_ID: %s\n",chatroom.name,
                                                                                                     serverIP,
                                                                                                     serverPort,
                                                                                                     chatroom.id,
                                                                                                   client.uid ) 
-        broadcastMesg = chatMessage(roomRef,client.name,fmt.Sprintf("client %s has joined this chatroom.",userName))
+        broadcastMesg = chatMessage(chatroom.id,client.name,fmt.Sprintf("client %s has joined this chatroom.",userName))
     }
     client.outgoing <- clientMesg   // send client notification
     chatroom.Broadcast(broadcastMesg) // notification to the whole chat room
 }
+ 
 func (client *Client) disconnect(clientName string){
+    client.sess.mu.Lock()
+    defer client.sess.mu.Unlock()
+
+
+    
+    
     if client.name == clientName {
-        client.conn.Close()
-        client.sess.mu.Unlock()
-        //close channels 
+        
+        // remove t
+        for _, room := range client.sess.chatRooms {
+            _, ok := room.clients[clientName] 
+            if ok { 
+                 
+               
+                
+                 
+                room.Broadcast(chatMessage(room.id,clientName,fmt.Sprintf("client %s has left this chatroom.",clientName))) // notification to the whole chat room
+                delete(room.clients, clientName) 
+            }
+             
+        }
+        //client.conn.Close()
     } else {
         client.outgoing <- errorMessage( 24, "User name not found")
     }
@@ -157,28 +176,30 @@ func (client *Client) leaveChatroom(roomRef string, joinId string, userName stri
     //chatroom, ok :=  client.sess.chatRooms[roomRef]
     // can not find chat
     if ok == false {
-        fmt.Printf(" Chat room not found%s",roomRef)
+        
         clientMesg = errorMessage(1, "Unknown chat room")
          
     }else {
         _, ok = chatroom.clients[userName]; 
         if ok {
-            delete(chatroom.clients, userName) 
+            
 
 
-            clientMesg = fmt.Sprintf("LEFT_CHATROOM: %s\nJOIN_ID: %s",chatroom.name, joinId) 
+            clientMesg = fmt.Sprintf("LEFT_CHATROOM: %s\nJOIN_ID: %s\n",chatroom.id, joinId) 
 
-            fmt.Printf(clientMesg)
+            client.outgoing <- clientMesg
             broadcastMesg = chatMessage(roomRef,client.name,fmt.Sprint("client %s has left this chatroom.",client.name))
             _ = broadcastMesg
             chatroom.Broadcast(broadcastMesg) // notification to the whole chat room
+            delete(chatroom.clients, userName) 
         }else {  
             clientMesg = errorMessage( 24, "User name not found") 
+            client.outgoing <- clientMesg
             // can not find user name
         } 
     }
     
-    client.outgoing <- clientMesg   // send client notification
+       // send client notification
     
 }
 
@@ -202,8 +223,10 @@ func (client *Client) parseMesg(mesg string ){
     var roomRef     string 
     var joinId      string
 
+    fmt.Print("\nMessage from client ",mesg)
     if strings.Contains(data[0], "HELO") {
-        client.outgoing <- fmt.Sprintf("IP:%s\nPort:%s\nStudentID:13321596\n", serverIP, serverPort)
+        var text = strings.Split(data[0], " ")[1]
+        client.outgoing <- fmt.Sprintf("HELO %s\nIP:%s\nPort:%s\nStudentID:13321596",text, serverIP, serverPort)
         
     } else if strings.Contains(data[0], "JOIN_CHATROOM") { 
         
@@ -232,12 +255,14 @@ func (client *Client) parseMesg(mesg string ){
         client.chat(mesg, clientName,roomRef,joinId)
     }else if  strings.Contains(data[0], "KILL_SERVICE"){
         os.Exit(1)
+    } else {
+        client.outgoing <- errorMessage(25 ,"unknown request")
     }
 
 }
 
 func (client *Client) Read() {
-    var buf = make([]byte, 1024)
+    var buf = make([]byte, 10240)
     
     for {  
         mesgLen, err := client.conn.Read(buf) 
@@ -255,10 +280,12 @@ func (client *Client) Read() {
 	 
 }
 
+
 func (client *Client) Write() {
-    fmt.Print("writing to channel") 
+   // fmt.Print("writing to channel") 
 	for data := range client.outgoing {
-		client.conn.Write([]byte(data + "\n"))
+        fmt.Printf(" Message to client ", data)
+		client.conn.Write([]byte(data ))
 	}
 }
 
