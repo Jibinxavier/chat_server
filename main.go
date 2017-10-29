@@ -93,7 +93,7 @@ func (client *Client) chat(mesg string, clientName string, roomRef string, joinI
         chatroom := client.sess.chatRooms[roomRef]
         broadcastMesg :=chatMessage(roomRef,client.name,mesg)
         chatroom.Broadcast(broadcastMesg)
-        //close channels 
+         
     } else {
         client.outgoing <- errorMessage( 24, "User name not found")
     }
@@ -149,16 +149,14 @@ func (client *Client) disconnect(clientName string){
         // remove t
         for _, room := range client.sess.chatRooms {
             _, ok := room.clients[clientName] 
-            if ok { 
-                 
-               
-                
-                 
+            if ok {  
                 room.Broadcast(chatMessage(room.id,clientName,fmt.Sprintf("client %s has left this chatroom.",clientName))) // notification to the whole chat room
                 delete(room.clients, clientName) 
             }
              
         }
+        close(client.incoming)
+        close(client.outgoing)
         //client.conn.Close()
     } else {
         client.outgoing <- errorMessage( 24, "User name not found")
