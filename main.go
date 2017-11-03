@@ -356,7 +356,7 @@ func main() {
      
     currSession := &Session{chatRooms: make(map[string]*ChatRoom)}
      
-    ln, _ := net.Listen("tcp", serverIP + ":" + serverPort)
+    ln, _ := net.Listen("tcp4", serverIP + ":" + serverPort)
     
     // accept connection on port 
     clientCount := 0

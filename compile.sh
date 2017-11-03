@@ -1,3 +1,2 @@
 #!/bin/bash
-docker build -t chatserver .
-docker run -e port=$1 chatserver
+CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main main.go

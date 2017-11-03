@@ -342,20 +342,21 @@ func NewClient(connection net.Conn,uid int, sess *Session) *Client {
  
 
 func main() {
-
-    if (len(os.Args) !=3) {
-        fmt.Println("ip port")
-        os.Exit(1)
-    } 
     serverIP   = "0.0.0.0"
     serverPort = os.Getenv("port")
+
+    if (len(serverPort)==0) {
+        fmt.Println("Env port not set")
+        os.Exit(1)
+    } 
+    
     fmt.Println("Launching server...")
 
     // listen on all interfaces
      
     currSession := &Session{chatRooms: make(map[string]*ChatRoom)}
      
-    ln, _ := net.Listen("tcp", serverIP + ":" + serverPort)
+    ln, _ := net.Listen("tcp4", serverIP + ":" + serverPort)
     
     // accept connection on port 
     clientCount := 0
