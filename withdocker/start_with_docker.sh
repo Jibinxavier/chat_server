@@ -1,2 +1,2 @@
 #!/bin/bash
-docker run -e port=$1 chatserver
+docker run --rm -it -net=host -e port=$1 chatserver
